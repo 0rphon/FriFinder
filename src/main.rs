@@ -69,9 +69,9 @@ pub struct SubChild {
 
 #[derive(Deserialize, Debug)]
 pub struct SubCData {
-    pub title:                          Option<String>,
-    pub stickied:	                    Option<bool>,
-    pub url:                            Option<String>,
+    pub title:      Option<String>,
+    pub stickied:   Option<bool>,
+    pub url:        Option<String>,
 }
 
 pub fn get_page(url: &str) -> Result<SubResponse, Error> {
