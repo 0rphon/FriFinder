@@ -157,25 +157,20 @@ fn get_instagrams(comments: Vec<String>) -> Result<Vec<String>, Box<dyn error::E
     Ok(usernames)
 }
 
-
-
 fn main() {
-    let resp = get_page(SUB_URL)
-        .unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let post_url = get_friday_url(resp)
-        .unwrap_or_else(||panic!("{}",log_event(CustomError::GetUrlError)));
-    let post = get_post(&format!("{}{}",post_url, POST_APPEND))
-        .unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let posts = get_comments(post)
-        .unwrap_or_else(||panic!("{}",log_event(CustomError::NullJsonError)));
-    let users = get_instagrams(posts)
-        .unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let mut file = File::create(OUTPUT_FILE)
-        .unwrap_or_else(|e|panic!("{}",log_event(e)));
-    for user in &users {
-        println!("{}",user);
-        file.write(format!("{}\n",user).as_bytes())
-            .unwrap_or_else(|e|panic!("{}",log_event(e)));
+    fn execute() -> Result<(), Box<dyn error::Error>> {
+        let resp = get_page(SUB_URL)?;
+        let post_url = get_friday_url(resp).ok_or(CustomError::GetUrlError)?;
+        let post = get_post(&format!("{}{}",post_url, POST_APPEND))?;
+        let posts = get_comments(post).ok_or(CustomError::NullJsonError)?;
+        let users = get_instagrams(posts)?;
+        let mut file = File::create(OUTPUT_FILE)?;
+        for user in &users {
+            println!("{}",user);
+            file.write(format!("{}\n",user).as_bytes())?;
+        }
+        println!("{} results saved to {}", users.len(), OUTPUT_FILE);
+        Ok(())
     }
-    println!("{} results saved to {}", users.len(), OUTPUT_FILE);
+    execute().unwrap_or_else(|e|panic!("{}",log_event(e)))
 }
