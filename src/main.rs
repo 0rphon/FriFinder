@@ -15,12 +15,16 @@ const KEY_WORD: &str = "Follow Friday";
 
 #[derive(Debug)]
 pub enum CustomError {
-    ParseError(String)
+    GetUrlError,
+    ParseError(String),
+    NullJsonError,
 }
 impl fmt::Display for CustomError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            CustomError::ParseError(part)    => write!(f, "ParseError: could not parse comment: \"{}\"", part),
+            CustomError::GetUrlError        => write!(f, "GetUrlError: Failed to find post url"),
+            CustomError::ParseError(part)   => write!(f, "ParseError: could not parse comment: \"{}\"", part),
+            CustomError::NullJsonError      => write!(f, "NullJsonError: json field was empty"),
         }
     }
 }
@@ -105,17 +109,12 @@ pub fn get_post(url: &str) -> Result<Vec<PostResponse>, Error> {
 
 
 fn get_friday_url(resp: SubResponse) -> Option<String> {
-    if let Some(rdata) = resp.data {
-        if let Some(children) = rdata.children {
-            for child in children {
-                if let Some(cdata) = child.data {
-                    if cdata.stickied.unwrap_or(false) {
-                        if cdata.title.unwrap_or(String::new()).contains(KEY_WORD) {
-                            if let Some(url) = cdata.url {
-                                return Some(url)
-                            }
-                        }
-                    }
+    for child in resp.data?.children? {
+        if let Some(cdata) = child.data {
+            if cdata.stickied.unwrap_or(false) 
+                && cdata.title.unwrap_or(String::new()).contains(KEY_WORD) {
+                if let Some(url) = cdata.url {
+                    return Some(url)
                 }
             }
         }
@@ -123,22 +122,16 @@ fn get_friday_url(resp: SubResponse) -> Option<String> {
     None
 }
 
-fn get_comments(post: Vec<PostResponse>) -> Vec<String> {
+fn get_comments(post: Vec<PostResponse>) -> Option<Vec<String>> {
     let mut comments = Vec::new();
-    if let Some(comments_field) = post.get(1) {
-        if let Some(data) = &comments_field.data {
-            if let Some(children) = &data.children {
-                for child in children {
-                    if let Some(data) = &child.data {
-                        if let Some(body) = &data.body {
-                            comments.push(body.clone())
-                        }
-                    }
-                }
+    for child in post.get(1)?.data.as_ref()?.children.as_ref()? {
+        if let Some(data) = &child.data {
+            if let Some(body) = &data.body {
+                comments.push(body.clone())
             }
         }
     }
-    comments
+    Some(comments)
 }
 
 fn get_instagrams(comments: Vec<String>) -> Result<Vec<String>, Box<dyn error::Error>> {
@@ -167,15 +160,22 @@ fn get_instagrams(comments: Vec<String>) -> Result<Vec<String>, Box<dyn error::E
 
 
 fn main() {
-    let resp = get_page(SUB_URL).unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let post_url = get_friday_url(resp).unwrap_or_else(||panic!("{}",log_event("Failed to find post url")));
-    let post = get_post(&format!("{}{}",post_url, POST_APPEND)).unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let posts = get_comments(post);
-    let users = get_instagrams(posts).unwrap_or_else(|e|panic!("{}",log_event(e)));
-    let mut file = File::create(OUTPUT_FILE).unwrap_or_else(|e|panic!("{}",log_event(e)));
+    let resp = get_page(SUB_URL)
+        .unwrap_or_else(|e|panic!("{}",log_event(e)));
+    let post_url = get_friday_url(resp)
+        .unwrap_or_else(||panic!("{}",log_event(CustomError::GetUrlError)));
+    let post = get_post(&format!("{}{}",post_url, POST_APPEND))
+        .unwrap_or_else(|e|panic!("{}",log_event(e)));
+    let posts = get_comments(post)
+        .unwrap_or_else(||panic!("{}",log_event(CustomError::NullJsonError)));
+    let users = get_instagrams(posts)
+        .unwrap_or_else(|e|panic!("{}",log_event(e)));
+    let mut file = File::create(OUTPUT_FILE)
+        .unwrap_or_else(|e|panic!("{}",log_event(e)));
     for user in &users {
         println!("{}",user);
-        file.write(format!("{}\n",user).as_bytes()).unwrap_or_else(|e|panic!("{}",log_event(e)));
+        file.write(format!("{}\n",user).as_bytes())
+            .unwrap_or_else(|e|panic!("{}",log_event(e)));
     }
     println!("{} results saved to {}", users.len(), OUTPUT_FILE);
 }
